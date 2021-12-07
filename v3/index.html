@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+		<meta
+			name="description"
+			content="Basic guide to tweening arcs in D3 using custom attrTween functions."
+		/>
+
+		<title>JavaScript D3: Arc Tween Example</title>
+
+		<style type="text/css">
+			.click-circle {
+				cursor: pointer;
+			}
+			.highlighted {
+				fill: rgba(201, 201, 201, 0.8);
+			}
+		</style>
+		<script
+			type="text/javascript"
+			src="http://cdnjs.cloudflare.com/ajax/libs/d3/3.2.2/d3.v3.min.js"
+		></script>
+	</head>
+
+	<body>
+		<div class="chart"></div>
+		<script type="text/javascript">
+			var width = window.innerWidth,
+				height = window.innerHeight;
+
+			var greenTranslate = 'translate(200, 200)';
+			var redTranslate = 'translate(600, 200)';
+
+			if (width < 800) {
+				redTranslate = 'translate(200, 600)';
+			}
+
+			// append svg to the DIV
+			d3.select('.chart')
+				.append('svg:svg')
+				.attr('width', width)
+				.attr('height', height);
+
+			var render = function (dataset) {
+				vis = d3.select('svg'); // select the svg
+
+				// set constants
+				var PI = Math.PI;
+				var arcMin = 75; // inner radius of the first arc
+				var arcWidth = 15; // width
+				var arcPad = 1; // padding between arcs
+
+				// arc accessor
+				//  d and i are automatically passed to accessor functions,
+				//  with d being the data and i the index of the data
+				var drawArc = d3.svg
+					.arc()
+					.innerRadius(function (d, i) {
+						return arcMin + i * arcWidth + arcPad;
+					})
+					.outerRadius(function (d, i) {
+						return arcMin + (i + 1) * arcWidth;
+					})
+					.startAngle(0 * (PI / 180))
+					.endAngle(function (d, i) {
+						return Math.floor(d * 6 * (PI / 180) * 1000) / 1000;
+					});
+
+				// bind the data
+				var arcs = vis.selectAll('path.arc-path').data(dataset);
+				var redArcs = vis.selectAll('path.red-path').data(dataset);
+
+				// update green arcs (the naive way)
+				arcs.transition() // adding a transition
+					.duration(300)
+					.attr('fill', function (d) {
+						// we need to redefine the fills as well since we have new data,
+						//  otherwise the colors would no longer be relative to the data
+						//  values (and arc length). if your fills weren't relative to
+						//  the data, this would not be necessary
+						var grn = Math.floor((1 - d / 60) * 255);
+						return 'rgb(0, ' + grn + ', 0)';
+					})
+					.attr('d', drawArc); // this will only work when the difference between the old
+				//  and new values between two isn't too great. otherwise
+				//  the arc will be drawn using the shortest-path. see below
+				//  for the custom arc2Tween function called by attrTween
+
+				// update red arcs
+
+				// custom tween function used by the attrTween method to draw the intermediary steps.
+				//  attrTween will actually pass the data, index, and attribute value of the current
+				//  DOM object to this function, but for our purposes, we can omit the attribute value
+				function arc2Tween(d, indx) {
+					var interp = d3.interpolate(this._current, d); // this will return an interpolater
+					//  function that returns values
+					//  between 'this._current' and 'd'
+					//  given an input between 0 and 1
+
+					this._current = d; // update this._current to match the new value
+
+					return function (t) {
+						// returns a function that attrTween calls with
+						//  a time input between 0-1; 0 as the start time,
+						//  and 1 being the end of the animation
+
+						var tmp = interp(t); // use the time to get an interpolated value
+						//  (between this._current and d)
+
+						return drawArc(tmp, indx); // pass this new information to the accessor
+						//  function to calculate the path points.
+						//  make sure sure you return this.
+
+						// n.b. we need to manually pass along the
+						//  index to drawArc so since the calculation of
+						//  the radii depend on knowing the index. if your
+						//  accessor function does not require knowing the
+						//  index, you can omit this argument
+					};
+				}
+
+				// *** update red arcs -- using attrTeen and a custom tween function ***
+				redArcs
+					.transition()
+					.duration(300)
+					.attr('fill', function (d) {
+						var red = Math.floor((1 - d / 60) * 255);
+						return 'rgb(' + red + ', 51, 51)';
+					})
+					.attrTween('d', arc2Tween); // using attrTween instead of attr here since
+				//  attr interpolates linearly without taking
+				//  in account the shape of the arc.
+				// attrTween requires a function as the second
+				//  argument, whereas attr can just be a value.
+
+				// draw green arcs for new data
+				arcs.enter()
+					.append('svg:path')
+					.attr('class', 'arc-path') // assigns a class for easier selecting
+					.attr('transform', greenTranslate)
+					.attr('fill', function (d) {
+						// fill is an rgb value with the green value determined by the data
+						// smaller numbers result in a higher green value (1 - d/60)
+						var grn = Math.floor((1 - d / 60) * 255);
+						return 'rgb(0, ' + grn + ', 0)';
+					})
+					.attr('d', drawArc); // draw the arc
+
+				// drawing the red arcs for new data
+				//  similar to above, except for
+				redArcs
+					.enter()
+					.append('svg:path')
+					.attr('class', 'red-path')
+					.attr('transform', redTranslate)
+					.attr('fill', function (d) {
+						var red = Math.floor((1 - d / 60) * 255);
+						return 'rgb(' + red + ', 51, 51)';
+					})
+					.attr('d', drawArc)
+					.each(function (d) {
+						this._current = d;
+					});
+			};
+
+			// the code below is not necessary for your understanding of arc tweening
+			//  instead, it is used to create a click area for people to regenerate
+			//  arcs by generating a new data set and calling render on that set
+
+			// for generating a random array of times
+			var generateTimes = function (quantity) {
+				var i,
+					times = [];
+
+				for (i = 0; i < quantity; i++) {
+					times.push(Math.round(Math.random() * 60));
+				}
+
+				return times;
+			};
+
+			// drawing the click area
+			var initialize = function () {
+				var arcMin = 75; // this should match the arcMin in render()
+				var times = generateTimes(6);
+
+				render(times);
+
+				// making the click circle for green arcs
+				if (!d3.selectAll('circle.click-circle')[0].length) {
+					// if there is no click area..
+					d3.select('svg')
+						.append('circle')
+						.attr('class', 'click-circle')
+						.attr('transform', greenTranslate)
+						.attr('r', arcMin * 0.85)
+						.attr('fill', 'rgba(201, 201, 201, 0.5)')
+						.on('click', function () {
+							times = generateTimes(6);
+							render(times);
+						})
+						.on('mouseover', function () {
+							d3.select(this).classed('highlighted', true);
+						})
+						.on('mouseout', function () {
+							d3.select(this).classed('highlighted', false);
+						});
+
+					// making the click circle for red arcs
+					d3.select('svg')
+						.append('circle')
+						.attr('class', 'click-circle')
+						.attr('transform', redTranslate)
+						.attr('r', arcMin * 0.85)
+						.attr('fill', 'rgba(201, 201, 201, 0.5)')
+						.on('click', function () {
+							times = generateTimes(6);
+							render(times);
+						})
+						.on('mouseover', function () {
+							d3.select(this).classed('highlighted', true);
+						})
+						.on('mouseout', function () {
+							d3.select(this).classed('highlighted', false);
+						});
+				}
+			};
+
+			setInterval(() => render(generateTimes(5)), 1500);
+		</script>
+	</body>
+</html>

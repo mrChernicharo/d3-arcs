@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<style>
+			button {
+				display: block;
+				margin: 0 auto;
+			}
+
+			#chart {
+				display: block;
+				margin: 20px auto 0;
+				height: 400px;
+				width: 400px;
+			}
+		</style>
+	</head>
+	<body>
+		<button onclick="draw()">Rerun animation</button>
+		<svg
+			id="chart"
+			preserveAspectRatio="xMinYMin meet"
+			viewBox="0 0 200 200"
+		></svg>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/4.6.0/d3.min.js"></script>
+
+		<script>
+			let data = [48, 21, 65, 30, 16, 22];
+			// let colors = colorbrewer.Spectral[data.length];
+			let colors = [
+				'red',
+				'darkorange',
+				'blue',
+				'dodgerblue',
+				'darkgreen',
+				'lightgreen',
+			];
+
+			let sizes = {
+				innerRadius: 50,
+				outerRadius: 100,
+			};
+
+			let durations = {
+				entryAnimation: 2000,
+			};
+
+			draw();
+
+			function draw() {
+				d3.select('#chart').html('');
+
+				let generator = d3.pie().sort(null);
+
+				let chart = generator(data);
+
+				let arcs = d3
+					.select('#chart')
+					.append('g')
+					.attr('transform', 'translate(100, 100)')
+					.selectAll('path')
+					.data(chart)
+					.enter()
+					.append('path')
+					.style('fill', (d, i) => colors[i]);
+
+				let angleInterpolation = d3.interpolate(
+					generator.startAngle()(),
+					generator.endAngle()()
+				);
+
+				let innerRadiusInterpolation = d3.interpolate(
+					0,
+					sizes.innerRadius
+				);
+				let outerRadiusInterpolation = d3.interpolate(
+					0,
+					sizes.outerRadius
+				);
+
+				let arc = d3.arc();
+
+				arcs.transition()
+					.duration(durations.entryAnimation)
+					.attrTween('d', d => {
+						let originalEnd = d.endAngle;
+						return t => {
+							let currentAngle = angleInterpolation(t);
+							if (currentAngle < d.startAngle) {
+								return '';
+							}
+
+							d.endAngle = Math.min(currentAngle, originalEnd);
+
+							return arc(d);
+						};
+					});
+
+				d3.select('#chart')
+					.transition()
+					.duration(durations.entryAnimation)
+					.tween('arcRadii', () => {
+						return t =>
+							arc
+								.innerRadius(innerRadiusInterpolation(t))
+								.outerRadius(outerRadiusInterpolation(t));
+					});
+			}
+		</script>
+	</body>
+</html>
